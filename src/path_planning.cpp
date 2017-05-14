@@ -13,7 +13,8 @@
 #include <ompl/base/spaces/SE3StateSpace.h>
 #include <ompl/base/OptimizationObjective.h>
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
-#include <ompl/geometric/planners/rrt/RRTstar.h>
+// #include <ompl/geometric/planners/rrt/RRTstar.h>
+#include <ompl/geometric/planners/rrt/InformedRRTstar.h>
 #include <ompl/geometric/SimpleSetup.h>
 
 #include <ompl/config.h>
@@ -41,7 +42,7 @@ public:
 	void setStart(double x, double y, double z)
 	{
 		ob::ScopedState<ob::SE3StateSpace> start(space);
-		start->setXYZ(x,y,z-0.9);
+		start->setXYZ(x,y,z);
 		start->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
 		pdef->clearStartStates();
 		pdef->addStartState(start);
@@ -77,25 +78,25 @@ public:
 		// set the bounds for the R^3 part of SE(3)
 		ob::RealVectorBounds bounds(3);
 
-		bounds.setLow(0,-50);
-		bounds.setHigh(0,50);
-		bounds.setLow(1,-50);
-		bounds.setHigh(1,50);
+		bounds.setLow(0,-5);
+		bounds.setHigh(0,10);
+		bounds.setLow(1,-5);
+		bounds.setHigh(1,10);
 		bounds.setLow(2,0);
-		bounds.setHigh(2,20);
+		bounds.setHigh(2,3);
 
 		space->as<ob::SE3StateSpace>()->setBounds(bounds);
 
 		// construct an instance of  space information from this state space
 		si = ob::SpaceInformationPtr(new ob::SpaceInformation(space));
 
-		start->setXYZ(1,1,1);
+		start->setXYZ(0,0,0);
 		start->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
 		// start.random();
 
-		// goal->setXYZ(4.29,-22.36,5.75);
+		goal->setXYZ(0,0,0);
 		goal->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
-		goal.random();
+		// goal.random();
 
 		
 	    // set state validity checking for this space
@@ -116,11 +117,34 @@ public:
 	~planner()
 	{
 	}
+	void replan(void)
+	{
+
+		std::cout << "Total Points:" << path_smooth->getStateCount () << std::endl;
+		if(path_smooth->getStateCount () <= 2)
+			plan();
+		else
+		{
+			for (std::size_t idx = 0; idx < path_smooth->getStateCount (); idx++)
+			{
+				if(!replan_flag)
+					replan_flag = !isStateValid(path_smooth->getState(idx));
+				else
+					break;
+
+			}
+			if(replan_flag)
+				plan();
+			else
+				std::cout << "Replanning not required" << std::endl;
+		}
+		
+	}
 	void plan(void)
 	{
 
 	    // create a planner for the defined space
-		ob::PlannerPtr plan(new og::RRTstar(si));
+		ob::PlannerPtr plan(new og::InformedRRTstar(si));
 
 	    // set the problem we are trying to solve for the planner
 		plan->setProblemDefinition(pdef);
@@ -135,7 +159,7 @@ public:
 		pdef->print(std::cout);
 
 	    // attempt to solve the problem within one second of planning time
-		ob::PlannerStatus solved = plan->solve(3.0);
+		ob::PlannerStatus solved = plan->solve(1);
 
 		if (solved)
 		{
@@ -187,8 +211,8 @@ public:
 	        //Path smoothing using bspline
 
 			og::PathSimplifier* pathBSpline = new og::PathSimplifier(si);
-			og::PathGeometric path_smooth(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
-			pathBSpline->smoothBSpline(path_smooth,3);
+			path_smooth = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
+			pathBSpline->smoothBSpline(*path_smooth,3);
 			// std::cout << "Smoothed Path" << std::endl;
 			// path_smooth.print(std::cout);
 
@@ -199,10 +223,10 @@ public:
 			marker.action = visualization_msgs::Marker::DELETEALL;
 			vis_pub.publish(marker);
 
-			for (std::size_t idx = 0; idx < path_smooth.getStateCount (); idx++)
+			for (std::size_t idx = 0; idx < path_smooth->getStateCount (); idx++)
 			{
 	                // cast the abstract state type to the type we expect
-				const ob::SE3StateSpace::StateType *se3state = path_smooth.getState(idx)->as<ob::SE3StateSpace::StateType>();
+				const ob::SE3StateSpace::StateType *se3state = path_smooth->getState(idx)->as<ob::SE3StateSpace::StateType>();
 
 	            // extract the first component of the state and cast it to what we expect
 				const ob::RealVectorStateSpace::StateType *pos = se3state->as<ob::RealVectorStateSpace::StateType>(0);
@@ -223,9 +247,9 @@ public:
 				marker.pose.orientation.y = rot->y;
 				marker.pose.orientation.z = rot->z;
 				marker.pose.orientation.w = rot->w;
-				marker.scale.x = 0.5;
-				marker.scale.y = 0.5;
-				marker.scale.z = 0.5;
+				marker.scale.x = 0.15;
+				marker.scale.y = 0.15;
+				marker.scale.z = 0.15;
 				marker.color.a = 1.0;
 				marker.color.r = 0.0;
 				marker.color.g = 1.0;
@@ -237,6 +261,7 @@ public:
 			
 			// Clear memory
 			pdef->clearSolutionPaths();
+			replan_flag = false;
 
 		}
 		else
@@ -252,6 +277,10 @@ private:
 
 	// create a problem instance
 	ob::ProblemDefinitionPtr pdef;
+
+	og::PathGeometric* path_smooth;
+
+	bool replan_flag = false;
 
 	std::shared_ptr<fcl::CollisionGeometry> Quadcopter;
 
@@ -303,7 +332,7 @@ private:
 };
 
 
-void octomapCallback(const octomap_msgs::Octomap::ConstPtr &msg, planner* ptrPlanner)
+void octomapCallback(const octomap_msgs::Octomap::ConstPtr &msg, planner* planner_ptr)
 {
 
 
@@ -319,30 +348,37 @@ void octomapCallback(const octomap_msgs::Octomap::ConstPtr &msg, planner* ptrPla
 	fcl::OcTree* tree = new fcl::OcTree(std::shared_ptr<const octomap::OcTree>(tree_oct));
 	
 	// Update the octree used for collision checking
-	ptrPlanner->updateMap(std::shared_ptr<fcl::CollisionGeometry>(tree));
+	planner_ptr->updateMap(std::shared_ptr<fcl::CollisionGeometry>(tree));
+	planner_ptr->replan();
 }
 
-void odomCb(const nav_msgs::Odometry::ConstPtr &msg, planner* ptrPlanner)
+void odomCb(const nav_msgs::Odometry::ConstPtr &msg, planner* planner_ptr)
 {
-	ptrPlanner->setStart(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
+	planner_ptr->setStart(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
 }
 
-void goalCb(const geometry_msgs::PointStamped::ConstPtr &msg, planner* ptrPlanner)
+void startCb(const geometry_msgs::PointStamped::ConstPtr &msg, planner* planner_ptr)
 {
-	ptrPlanner->setGoal(msg->point.x, msg->point.y, msg->point.z);
-	ptrPlanner->plan();
+	planner_ptr->setStart(msg->point.x, msg->point.y, msg->point.z);
+}
+
+void goalCb(const geometry_msgs::PointStamped::ConstPtr &msg, planner* planner_ptr)
+{
+	planner_ptr->setGoal(msg->point.x, msg->point.y, msg->point.z);
+	planner_ptr->plan();
 }
 
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "octomap_planner");
 	ros::NodeHandle n;
-	planner myPlanner;
+	planner planner_object;
 
-	ros::Subscriber octree_sub = n.subscribe<octomap_msgs::Octomap>("/octomap_binary", 1, boost::bind(&octomapCallback, _1, &myPlanner));
-	ros::Subscriber odom_sub = n.subscribe<nav_msgs::Odometry>("/bebop2/odometry_sensor1/odometry", 1, boost::bind(&odomCb, _1, &myPlanner));
-	ros::Subscriber goal_sub = n.subscribe<geometry_msgs::PointStamped>("/clicked_point", 1, boost::bind(&goalCb, _1, &myPlanner));
-	
+	ros::Subscriber octree_sub = n.subscribe<octomap_msgs::Octomap>("/octomap_binary", 1, boost::bind(&octomapCallback, _1, &planner_object));
+	// ros::Subscriber odom_sub = n.subscribe<nav_msgs::Odometry>("/bebop2/odometry_sensor1/odometry", 1, boost::bind(&odomCb, _1, &planner_object));
+	ros::Subscriber goal_sub = n.subscribe<geometry_msgs::PointStamped>("/clicked_point", 1, boost::bind(&goalCb, _1, &planner_object));
+	ros::Subscriber start_sub = n.subscribe<geometry_msgs::PointStamped>("/start/clicked_point", 1, boost::bind(&goalCb, _1, &planner_object));
+
 	vis_pub = n.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
 	traj_pub = n.advertise<trajectory_msgs::MultiDOFJointTrajectory>("waypoints",1);
 	

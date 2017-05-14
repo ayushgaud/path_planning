@@ -152,6 +152,7 @@ add_executable(${PROJECT_NAME}_node src/path_planning.cpp)
 add_executable(old_path_planning src/old_path_planning.cpp)
 add_executable(traj_gen src/trajectory_generator.cpp)
 add_executable(scale src/scaling.cpp)
+add_executable(transform_pointcloud src/transform.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -186,6 +187,10 @@ target_link_libraries(traj_gen
 )
 
 target_link_libraries(scale
+   ${catkin_LIBRARIES}
+)
+
+target_link_libraries(transform_pointcloud
    ${catkin_LIBRARIES}
 )
 
