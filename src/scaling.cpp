@@ -1,3 +1,19 @@
+ /*
+ * Copyright 2017 Ayush Gaud 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "ros/ros.h"
 #include "std_msgs/Float32.h"
 #include <nav_msgs/Odometry.h>
@@ -45,10 +61,10 @@ void transformCb(const svo_msgs::DenseInput &orb_msg)
 		offset_sensors_transformed = offset_sensors_transformed * world_to_camera.inverse();  //Transform the axis to camera convention
 		offset_sensors_transformed = world_to_camera * offset_sensors_transformed;	//Transform the points
 		
-		// static tf::TransformBroadcaster br;
+		static tf::TransformBroadcaster br;
 		// br.sendTransform(tf::StampedTransform(orb_tf, ros::Time::now(), "world", "ORB"));
 		// br.sendTransform(tf::StampedTransform(offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "ORB_transformed"));
-		// br.sendTransform(tf::StampedTransform(offset_sensors_transformed.inverse() * offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "bebop"));
+		br.sendTransform(tf::StampedTransform(offset_sensors_transformed.inverse() * offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "bebop"));
 
 		tf::poseTFToMsg(offset_sensors_transformed * offset_slam_scaled.inverse() * orb_tf, msg_dense.pose);
 		msg_dense.min_depth = orb_msg.min_depth * scale;
@@ -111,6 +127,7 @@ int main(int argc, char **argv)
 	pub = n.advertise<svo_msgs::DenseInput>("/scaled/DenseInput",1);
 	ros::spin();
 }
+
 
 
 

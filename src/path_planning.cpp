@@ -1,3 +1,19 @@
+ /*
+ * Copyright 2017 Ayush Gaud 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "ros/ros.h"
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/conversions.h>
@@ -39,6 +55,12 @@ ros::Publisher traj_pub;
 
 class planner {
 public:
+	void init_start(void)
+	{
+		if(!set_start)
+			std::cout << "Initialized" << std::endl;
+		set_start = true;
+	}
 	void setStart(double x, double y, double z)
 	{
 		ob::ScopedState<ob::SE3StateSpace> start(space);
@@ -49,12 +71,21 @@ public:
 	}
 	void setGoal(double x, double y, double z)
 	{
-		ob::ScopedState<ob::SE3StateSpace> goal(space);
-		goal->setXYZ(x,y,z);
-		goal->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
-		pdef->clearGoal();
-		pdef->setGoalState(goal);
-		std::cout << "goal set to: " << x << " " << y << " " << z << std::endl;
+		if(prev_goal[0] != x || prev_goal[1] != y || prev_goal[2] != z)
+		{
+			ob::ScopedState<ob::SE3StateSpace> goal(space);
+			goal->setXYZ(x,y,z);
+			prev_goal[0] = x;
+			prev_goal[1] = y;
+			prev_goal[2] = z;
+			goal->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
+			pdef->clearGoal();
+			pdef->setGoalState(goal);
+			std::cout << "Goal point set to: " << x << " " << y << " " << z << std::endl;
+			if(set_start)
+				plan();
+			
+		}
 	}
 	void updateMap(std::shared_ptr<fcl::CollisionGeometry> map)
 	{
@@ -78,12 +109,12 @@ public:
 		// set the bounds for the R^3 part of SE(3)
 		ob::RealVectorBounds bounds(3);
 
-		bounds.setLow(0,-5);
-		bounds.setHigh(0,10);
-		bounds.setLow(1,-5);
-		bounds.setHigh(1,10);
+		bounds.setLow(0,-20);
+		bounds.setHigh(0,20);
+		bounds.setLow(1,-20);
+		bounds.setHigh(1,20);
 		bounds.setLow(2,0);
-		bounds.setHigh(2,3);
+		bounds.setHigh(2,20);
 
 		space->as<ob::SE3StateSpace>()->setBounds(bounds);
 
@@ -95,9 +126,11 @@ public:
 		// start.random();
 
 		goal->setXYZ(0,0,0);
+		prev_goal[0] = 0;
+		prev_goal[1] = 0;
+		prev_goal[2] = 0;
 		goal->as<ob::SO3StateSpace::StateType>(1)->setIdentity();
 		// goal.random();
-
 		
 	    // set state validity checking for this space
 		si->setStateValidityChecker(std::bind(&planner::isStateValid, this, std::placeholders::_1 ));
@@ -119,27 +152,29 @@ public:
 	}
 	void replan(void)
 	{
-
-		std::cout << "Total Points:" << path_smooth->getStateCount () << std::endl;
-		if(path_smooth->getStateCount () <= 2)
-			plan();
-		else
+		if(path_smooth != NULL && set_start)
 		{
-			for (std::size_t idx = 0; idx < path_smooth->getStateCount (); idx++)
-			{
-				if(!replan_flag)
-					replan_flag = !isStateValid(path_smooth->getState(idx));
-				else
-					break;
-
-			}
-			if(replan_flag)
+			std::cout << "Total Points:" << path_smooth->getStateCount () << std::endl;
+			if(path_smooth->getStateCount () <= 2)
 				plan();
 			else
-				std::cout << "Replanning not required" << std::endl;
+			{
+				for (std::size_t idx = 0; idx < path_smooth->getStateCount (); idx++)
+				{
+					if(!replan_flag)
+						replan_flag = !isStateValid(path_smooth->getState(idx));
+					else
+						break;
+
+				}
+				if(replan_flag)
+					plan();
+				else
+					std::cout << "Replanning not required" << std::endl;
+			}
 		}
-		
 	}
+
 	void plan(void)
 	{
 
@@ -159,7 +194,7 @@ public:
 		pdef->print(std::cout);
 
 	    // attempt to solve the problem within one second of planning time
-		ob::PlannerStatus solved = plan->solve(1);
+		ob::PlannerStatus solved = plan->solve(2);
 
 		if (solved)
 		{
@@ -278,13 +313,19 @@ private:
 	// create a problem instance
 	ob::ProblemDefinitionPtr pdef;
 
-	og::PathGeometric* path_smooth;
+	// goal state
+	double prev_goal[3];
+
+	og::PathGeometric* path_smooth = NULL;
 
 	bool replan_flag = false;
 
 	std::shared_ptr<fcl::CollisionGeometry> Quadcopter;
 
 	std::shared_ptr<fcl::CollisionGeometry> tree_obj;
+
+	// Flag for initialization
+	bool set_start = false;
 
 	bool isStateValid(const ob::State *state)
 	{
@@ -337,10 +378,10 @@ void octomapCallback(const octomap_msgs::Octomap::ConstPtr &msg, planner* planne
 
 
     //loading octree from binary
-	// const std::string filename = "/home/ayush/power_plant.bt";
-	// octomap::OcTree temp_tree(0.1);
-	// temp_tree.readBinary(filename);
-	// fcl::OcTree* tree = new fcl::OcTree(std::shared_ptr<const octomap::OcTree>(&temp_tree));
+	 // const std::string filename = "/home/rrc/power_plant.bt";
+	 // octomap::OcTree temp_tree(0.1);
+	 // temp_tree.readBinary(filename);
+	 // fcl::OcTree* tree = new fcl::OcTree(std::shared_ptr<const octomap::OcTree>(&temp_tree));
 	
 
 	// convert octree to collision object
@@ -355,17 +396,18 @@ void octomapCallback(const octomap_msgs::Octomap::ConstPtr &msg, planner* planne
 void odomCb(const nav_msgs::Odometry::ConstPtr &msg, planner* planner_ptr)
 {
 	planner_ptr->setStart(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
+	planner_ptr->init_start();
 }
 
 void startCb(const geometry_msgs::PointStamped::ConstPtr &msg, planner* planner_ptr)
 {
 	planner_ptr->setStart(msg->point.x, msg->point.y, msg->point.z);
+	planner_ptr->init_start();
 }
 
 void goalCb(const geometry_msgs::PointStamped::ConstPtr &msg, planner* planner_ptr)
 {
 	planner_ptr->setGoal(msg->point.x, msg->point.y, msg->point.z);
-	planner_ptr->plan();
 }
 
 int main(int argc, char **argv)
@@ -375,9 +417,9 @@ int main(int argc, char **argv)
 	planner planner_object;
 
 	ros::Subscriber octree_sub = n.subscribe<octomap_msgs::Octomap>("/octomap_binary", 1, boost::bind(&octomapCallback, _1, &planner_object));
-	// ros::Subscriber odom_sub = n.subscribe<nav_msgs::Odometry>("/bebop2/odometry_sensor1/odometry", 1, boost::bind(&odomCb, _1, &planner_object));
+	ros::Subscriber odom_sub = n.subscribe<nav_msgs::Odometry>("/bebop2/odometry_sensor1/odometry", 1, boost::bind(&odomCb, _1, &planner_object));
 	ros::Subscriber goal_sub = n.subscribe<geometry_msgs::PointStamped>("/clicked_point", 1, boost::bind(&goalCb, _1, &planner_object));
-	ros::Subscriber start_sub = n.subscribe<geometry_msgs::PointStamped>("/start/clicked_point", 1, boost::bind(&goalCb, _1, &planner_object));
+	// ros::Subscriber start_sub = n.subscribe<geometry_msgs::PointStamped>("/start/clicked_point", 1, boost::bind(&goalCb, _1, &planner_object));
 
 	vis_pub = n.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
 	traj_pub = n.advertise<trajectory_msgs::MultiDOFJointTrajectory>("waypoints",1);

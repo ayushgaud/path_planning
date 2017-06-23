@@ -1,3 +1,19 @@
+ /*
+ * Copyright 2017 Ayush Gaud 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+ 
 #include "ros/ros.h"
 #include <thread>
 #include "mutex"
@@ -17,7 +33,7 @@ bool is_terminated = true;
 bool init_trajpub = false;
 int id = 0;
 
-ros::Duration planner_delay(1);
+ros::Duration planner_delay(2);
 
 Eigen::MatrixXf prev_states = Eigen::MatrixXf::Zero(4,3);
 std::mutex states_mutex;
@@ -51,7 +67,7 @@ void trajCb(Eigen::MatrixXf coefficients, Eigen::MatrixXf waypoints)
 	is_terminated = false;
 	size_t n = waypoints.rows() - 1;
 	Eigen::VectorXf time = Eigen::VectorXf::Zero(n);
-	float avg_vel = 0.1;
+	float avg_vel = 0.3;
 	// Calculate time based on average velocity for the trajetory
 	for (int i = 0; i < n; ++i)
 	{
