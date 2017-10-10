@@ -64,13 +64,16 @@ void transformCb(const svo_msgs::DenseInput &orb_msg)
 		static tf::TransformBroadcaster br;
 		// br.sendTransform(tf::StampedTransform(orb_tf, ros::Time::now(), "world", "ORB"));
 		// br.sendTransform(tf::StampedTransform(offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "ORB_transformed"));
-		br.sendTransform(tf::StampedTransform(offset_sensors_transformed.inverse() * offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "bebop"));
+		// br.sendTransform(tf::StampedTransform(offset_sensors_transformed.inverse() * offset_slam_scaled.inverse() * orb_tf, ros::Time::now(), "world", "bebop"));
+		br.sendTransform(tf::StampedTransform(world_to_camera.inverse() * offset_sensors_transformed * offset_slam_scaled.inverse() * orb_tf * world_to_camera, ros::Time::now(), "world", "scaled_bebop"));
 
 		tf::poseTFToMsg(offset_sensors_transformed * offset_slam_scaled.inverse() * orb_tf, msg_dense.pose);
 		msg_dense.min_depth = orb_msg.min_depth * scale;
 		msg_dense.max_depth = orb_msg.max_depth * scale;
 		pub.publish(msg_dense);
-		scaled_pose_pub.publish(msg_dense.pose);
+		geometry_msgs::Pose pose_msg;
+		tf::poseTFToMsg(world_to_camera.inverse() * offset_sensors_transformed * offset_slam_scaled.inverse() * orb_tf * world_to_camera, pose_msg);
+		scaled_pose_pub.publish(pose_msg);
 	}
 }
 
@@ -126,6 +129,6 @@ int main(int argc, char **argv)
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 	pub = n.advertise<svo_msgs::DenseInput>("/scaled/DenseInput",1);
-	scaled_pose_pub = n.advertise<geometry_msgs::PoseStamped>("/scaled_odom",1);
+	scaled_pose_pub = n.advertise<geometry_msgs::Pose>("/scaled_odom",1);
 	ros::spin();
 }
