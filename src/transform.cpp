@@ -47,10 +47,16 @@ void pclCb(const sensor_msgs::PointCloud2 &msg)
 	}
 
 	static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(camera_to_world * transformed_frame * camera_to_world.inverse(), ros::Time::now(), "world", "camera_transformed"));
+	tf::Transform camera_to_ros = camera_to_world * transformed_frame * camera_to_world.inverse();
+	if (~std::isnan(camera_to_ros.getOrigin().x()) || ~std::isnan(camera_to_ros.getOrigin().y()) || ~std::isnan(camera_to_ros.getOrigin().z()))
+	{
+		br.sendTransform(tf::StampedTransform(camera_to_ros, ros::Time::now(), "world", "camera_transformed"));
+		out.header.frame_id = "camera_transformed";
+		pcl_pub.publish(out);
+	}
+	else
+		ROS_ERROR("is NAN");
 	
-	out.header.frame_id = "camera_transformed";
-	pcl_pub.publish(out);
 
 }
 

@@ -24,9 +24,9 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
-ros::Publisher pub;
+ros::Publisher pub, scaled_pose_pub;
 float scale = 1;
-float min_trans = 2.0; //Minimum translation for calculating scale
+float min_trans = 0.5; //Minimum translation for calculating scale
 
 geometry_msgs::Pose odom_slam, odom_sensors;
 tf::Transform offset_slam, offset_sensors, offset_sensors_transformed;
@@ -70,6 +70,7 @@ void transformCb(const svo_msgs::DenseInput &orb_msg)
 		msg_dense.min_depth = orb_msg.min_depth * scale;
 		msg_dense.max_depth = orb_msg.max_depth * scale;
 		pub.publish(msg_dense);
+		scaled_pose_pub.publish(msg_dense.pose);
 	}
 }
 
@@ -125,9 +126,6 @@ int main(int argc, char **argv)
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 	pub = n.advertise<svo_msgs::DenseInput>("/scaled/DenseInput",1);
+	scaled_pose_pub = n.advertise<geometry_msgs::PoseStamped>("/scaled_odom",1);
 	ros::spin();
 }
-
-
-
-
