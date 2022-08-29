@@ -1,3 +1,5 @@
+[Update] A slightly better documented version of this can be found here: https://github.com/ArduPilot/OctomapPlanner
+
 # path_planning
 Quadcopter path planning using RRT* and minimum jerk trajectory generation
 
